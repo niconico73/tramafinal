@@ -256,32 +256,6 @@
         </p>
         <?php } ?>
         <?php if ($datos_venta['venta_pagado'] < $datos_venta['venta_total_final'] && $datos_venta['venta_tipo'] == "Credito") { ?>
-    <div id="detalle-pago-form-container">
-        <form class="FormularioAjax" action="<?php echo SERVERURL; ?>ajax/ventaAjax.php" method="POST" data-form="save" autocomplete="off" name="formdetallepago">
-            <input type="hidden" name="modulo_venta" value="registrar_detalle_pago">
-            <input type="hidden" name="codigo_venta" value="<?php echo $datos_venta['venta_codigo']; ?>">
-
-            <label for="banco">Banco:</label>
-            <div class="form-group">
-    <label for="metodo_pago">Método de pago:</label>
-    <select id="metodo_pago" class="form-control" name="metodo_pago">
-        <option value="">Selecciona un método de pago</option>
-        <option value="BCP">BCP</option>
-        <option value="YAPE">YAPE</option>
-        <option value="PLIM">PLIM</option>
-        <option value="BBVA">BBVA</option>
-        <option value="INTERBANK">INTERBANK</option>
-    </select>
-</div>
-
-            <div class="form-group">
-                <label for="numero_operacion">N° de operación:</label>
-                <input type="text" class="form-control" id="numero_operacion" name="numero_operacion">
-            </div>
-
-            <button type="submit" class="btn btn-primary">Guardar Detalle de Pago</button>
-        </form>
-    </div>
 <?php } ?>
     </div>
     
@@ -304,28 +278,27 @@
   </div>
 </div>
 
-<div id="detalle-pago-form-container" style="display: none;"> 
-  <form class="FormularioAjax" action="<?php echo SERVERURL; ?>ajax/ventaAjax.php" method="POST" data-form="save" autocomplete="off" name="formdetallepago">
-    <input type="hidden" name="modulo_venta" value="registrar_detalle_pago">
-    <input type="hidden" name="codigo_venta" value="<?php echo $datos_venta['venta_codigo']; ?>">
-    <input type="hidden" name="pago_id" value=""> <label for="banco">Banco:</label>
-    <div class="form-group">
-      <label for="metodo_pago">Método de pago:</label>
-      <select id="metodo_pago" class="form-control" name="metodo_pago">
-        <option value="">Selecciona un método de pago</option>
-        <option value="BCP">BCP</option>
-        <option value="YAPE">YAPE</option>
-        <option value="PLIM">PLIM</option>
-        <option value="BBVA">BBVA</option>
-        <option value="INTERBANK">INTERBANK</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label for="numero_operacion">N° de operación:</label>
-      <input type="text" class="form-control" id="numero_operacion" name="numero_operacion">
-    </div>
-    <button type="submit" class="btn btn-primary">Guardar Detalle de Pago</button>
-  </form>
+<<div id="detalle-pago-form-container" style="display: none;"><form id="originalDetallePagoForm" class="FormularioAjax" action="<?php echo SERVERURL; ?>ajax/ventaAjax.php" method="POST" data-form="save" autocomplete="off" name="formdetallepago">
+        <input type="hidden" name="modulo_venta" value="registrar_detalle_pago">
+        <input type="hidden" name="codigo_venta" value="<?php echo $datos_venta['venta_codigo']; ?>">
+        <label for="banco">Banco:</label>
+        <div class="form-group">
+            <label for="metodo_pago">Método de pago:</label>
+            <select id="metodo_pago" class="form-control" name="metodo_pago">
+                <option value="">Selecciona un método de pago</option>
+                <option value="BCP">BCP</option>
+                <option value="YAPE">YAPE</option>
+                <option value="PLIM">PLIM</option>
+                <option value="BBVA">BBVA</option>
+                <option value="INTERBANK">INTERBANK</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="numero_operacion">N° de operación:</label>
+            <input type="text" class="form-control" id="numero_operacion" name="numero_operacion">
+        </div>
+        <button type="submit" class="btn btn-primary">Guardar Detalle de Pago</button>
+    </form>
 </div>
    <!--FIN Modal DETALLES -->
     <hr style="margin: 70px 0; ">
@@ -473,56 +446,124 @@
         </div>
     </div>
 <script>
- $(document).ready(function() {
+$(document).ready(function() {
   $('#ModalEditDetallePago').on('show.bs.modal', function(event) {
     var button = $(event.relatedTarget);
-    var pagoId = button.data('pago-id');
+    var codigoVenta = button.data('pago-id');
+    var ventaEstado = button.data('venta-estado'); // Obtener el estado de la venta
 
-    // Clonar el formulario
-    var formClone = $('#detalle-pago-form-container form').clone();
+    // Clonar el formulario ORIGINAL en cada apertura
+    var formClone = $('#originalDetallePagoForm').clone();
 
-    // Llenar el campo oculto con el pago_id
-    formClone.find('input[name="pago_id"]').val(pagoId);
+    // Llenar el campo oculto con el codigo_venta
+    formClone.find('input[name="codigo_venta"]').val(codigoVenta);
 
     // Insertar el formulario clonado en el modal
     $('#detallePagoFormContainer').html(formClone);
+    $('#detalle-pago-form-container').hide();
 
-    // Realizar la solicitud AJAX para llenar los campos del formulario (si es necesario)
-    fetch('<?php echo SERVERURL; ?>ajax/ventaAjax.php', {
-      method: 'POST',
-      body: new FormData(document.getElementById('sale-detail-form')) 
+    // Limpiar los campos del formulario CLONADO después de insertarlo
+    $('#detallePagoFormContainer #metodo_pago').val('');
+    $('#detallePagoFormContainer #banco').val('');
+    $('#detallePagoFormContainer #numero_operacion').val('');
+
+    if (ventaEstado === 'Pendiente') { 
+      mostrarOpcionesPagoModal(); 
+
+      // Manejar el envío del formulario clonado
+      formClone.on('submit', function(event) {
+        event.preventDefault(); 
+
+        // Obtener los datos del formulario clonado
+        var formData = new FormData(this);
+
+        // Realizar la solicitud AJAX
+        fetch('<?php echo SERVERURL; ?>ajax/ventaAjax.php', {
+          method: 'POST',
+          body: formData
+        })
+        .then(respuesta => respuesta.json())
+        .then(data => {
+          if (data.success) {
+            Swal.fire({
+              icon: 'success',
+              title: 'Éxito',
+              text: data.message, // Mostrar el mensaje de éxito
+            });
+            actualizarTablaPagos(codigoVenta); // Actualizar la tabla de pagos
+            $('#ModalEditDetallePago').modal('hide'); // Cerrar el modal
+          } else {
+            Swal.fire({
+              icon: 'error',
+              title: 'Error',
+              text: data.message, // Mostrar el mensaje de error
+            });
+          }
+        })
+        .catch(error => {
+          console.error('Error en la solicitud AJAX:', error);
+        });
+      });
+    } else {
+      // La venta no está pendiente, mostrar un mensaje de error
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No se pueden agregar detalles de pago a una venta que no está pendiente.'
+      });
+
+      // Cerrar el modal
+      $('#ModalEditDetallePago').modal('hide');
+    }
+  });
+
+  function mostrarOpcionesPagoModal() {
+    // ... (tu lógica para mostrar opciones de pago) ...
+  }
+
+  function actualizarTablaPagos(codigoVenta) {
+    // Realiza una solicitud AJAX para obtener los datos actualizados de los pagos
+    fetch('<?php echo SERVERURL; ?>ajax/ventaAjax.php?modulo_venta=obtener_pagos&codigo_venta=' + codigoVenta, {
+      method: 'GET'
     })
     .then(respuesta => respuesta.json())
-    .then(pagos => {
-      const pago = pagos.find(p => p.pago_id == pagoId);
+    .then(data => {
+      if (data.status === 'success' && data.pagos) {
+        const pagos = data.pagos;
+        const tablaPagos = $('#tablaPagos tbody'); // Reemplaza con el ID de tu tabla de pagos
+        tablaPagos.empty(); // Limpiar la tabla
 
-      if (pago) {
-        // Llenar los campos del formulario clonado
-        formClone.find('#metodo_pago').val(pago.metodo_pago);
-        formClone.find('#numero_operacion').val(pago.numero_operacion);
-        mostrarOpcionesPagoModal(); 
+        // Agregar las filas de pagos actualizadas
+        pagos.forEach((pago, index) => {
+          const nuevaFila = `
+            <tr class="text-center text-uppercase">
+              <th scope="row">${index + 1}</th>
+              <td>${pago.pago_fecha}</td>
+              <td>${pago.pago_monto}</td>
+              <td>${pago.usuario_nombre} ${pago.usuario_apellido}</td>
+              <td>Caja #${pago.caja_numero} - ${pago.caja_nombre}</td>
+              <td>${pago.metodo_pago || 'N/A'}</td>
+              <td>${pago.numero_operacion || 'N/A'}</td>
+              <td>
+                <button type="button" class="btn btn-primary btn-sm" data-toggle="modal" data-target="#ModalEditDetallePago" data-pago-id="${pago.detalle_pago_id}">
+                  Agregar Detalles
+                </button>
+              </td>
+            </tr>
+          `;
+          tablaPagos.append(nuevaFila);
+        });
       } else {
-        console.error('No se encontraron detalles de pago para este ID.');
+        console.error('Error al obtener los pagos:', data.message);
       }
     })
     .catch(error => {
-      console.error('Error al obtener detalles de pago:', error);
+      console.error('Error en la solicitud AJAX:', error);
     });
-  });
+  }
 });
 
-function mostrarOpcionesPagoModal() {
-  var metodoPago = $('#metodo_pago').val();
-  $('#opciones_pago_modal').show();
 
-  if (metodoPago === 'VIRTUAL') {
-    $('#banco_section_modal').show();
-    $('#numero_operacion_section_modal').show();
-  } else {
-    $('#banco_section_modal').hide();
-    $('#numero_operacion_section_modal').hide();
-  }
-}
 </script>
     <script>
         /*----------  Calcular cambio  ----------*/

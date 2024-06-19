@@ -274,64 +274,89 @@ error_reporting(E_ALL);
         } /*-- Fin controlador --*/
 
         /*------ SOY UN DIOS ---*/
-        public function registrar_detalle_pago_controlador()
-        {
+        public function registrar_detalle_pago_controlador(){
             // 1. Recibir y limpiar los datos del formulario
             $codigo_venta = mainModel::limpiar_cadena($_POST['codigo_venta']);
-            $metodo_pago = mainModel::limpiar_cadena($_POST['metodo_pago']); 
+            $metodo_pago = mainModel::limpiar_cadena($_POST['metodo_pago']);
             $numero_operacion = mainModel::limpiar_cadena($_POST['numero_operacion']);
         
             // 2. Validar los datos 
             if (empty($metodo_pago)) {
-                echo json_encode(array("success" => false, "message" => "Error: Debes seleccionar un método de pago."));
+                $alerta = ["success" => false, "message" => "Error: Debes seleccionar un método de pago."];
+                echo json_encode($alerta);
                 exit();
             }
         
-            // Validar número de operación si el método de pago es virtual
-            if ($_POST['metodo_pago'] === 'VIRTUAL' && empty($numero_operacion)) {
-                echo json_encode(array("success" => false, "message" => "Error: Debes ingresar el número de operación."));
+            if ($metodo_pago === 'VIRTUAL' && empty($numero_operacion)) {
+                $alerta = ["success" => false, "message" => "Error: Debes ingresar el número de operación."];
+                echo json_encode($alerta);
                 exit();
             }
         
-            // 3. Insertar los datos en la base de datos (consulta preparada PDO)
-          // Insertar datos de método de pago (consulta preparada PDO)
-    $sql = "INSERT INTO detalle_pago (venta_codigo, metodo_pago, numero_operacion) 
-    VALUES (:venta_codigo, :metodo_pago, :numero_operacion)"; // Marcadores con nombre
-$stmt = mainModel::conectar()->prepare($sql);
-
-if ($stmt) {
-                // Vincula los parámetros (usando bindParam para PDO)
+            // 3. Obtener el ID del pago existente
+            $sqlPago = "SELECT pago_id FROM pago WHERE venta_codigo = :venta_codigo"; // Consulta para obtener el pago_id
+            $stmtPago = mainModel::conectar()->prepare($sqlPago);
+            $stmtPago->bindParam(":venta_codigo", $codigo_venta);
+            $stmtPago->execute();
+        
+            if ($stmtPago->rowCount() <= 0) {
+                $alerta = ["success" => false, "message" => "Error: No se encontró el pago asociado a la venta."];
+                echo json_encode($alerta);
+                exit();
+            }
+        
+            $pago = $stmtPago->fetch();
+            $pago_id = $pago['pago_id']; // ID del pago existente
+        
+            // Iniciar una transacción
+            mainModel::conectar()->beginTransaction();
+        
+            try {
+                // 4. Obtener y actualizar los números de pago (si es necesario)
+                $sql = "SELECT detalle_pago_id, pago_numero FROM detalle_pago WHERE venta_codigo = :venta_codigo ORDER BY detalle_pago_id ASC";
+                $stmt = mainModel::conectar()->prepare($sql);
                 $stmt->bindParam(":venta_codigo", $codigo_venta);
-                $stmt->bindParam(":metodo_pago", $metodo_pago);
-                $stmt->bindParam(":numero_operacion", $numero_operacion);
+                $stmt->execute();
         
-                if ($stmt->execute()) {
-                    // Método de pago registrado exitosamente
-                    $alerta = [
-                        "success" => true,
-                        "message" => "Detalle de pago registrado exitosamente."
-                    ];
-                } else {
-                    // Manejo de errores en la inserción del detalle de pago
-                    error_log("Error al insertar datos de detalle de pago: " . $stmt->errorInfo()[2]);  // Usar errorInfo() en PDO
-                    $alerta = [
-                        "success" => false,
-                        "message" => "No hemos podido registrar el detalle de pago, por favor intente nuevamente."
-                    ];
+                $nuevo_pago_numero = 1;
+                while ($detalle = $stmt->fetch()) {
+                    if ($detalle['pago_numero'] !== $nuevo_pago_numero) {
+                        $updateSql = "UPDATE detalle_pago SET pago_numero = :pago_numero WHERE detalle_pago_id = :detalle_pago_id";
+                        $updateStmt = mainModel::conectar()->prepare($updateSql);
+                        $updateStmt->bindParam(":pago_numero", $nuevo_pago_numero);
+                        $updateStmt->bindParam(":detalle_pago_id", $detalle['detalle_pago_id']);
+                        $updateStmt->execute();
+                    }
+                    $nuevo_pago_numero++;
                 }
         
-                $stmt = null; // Liberar la sentencia preparada (PDO)
-            } else {
-                // Manejo de errores en la preparación de la consulta
-                error_log("Error al preparar la consulta de detalle de pago: " . mainModel::conectar()->errorInfo()[2]);  // Usar errorInfo() en PDO
-                $alerta = [
-                    "success" => false,
-                    "message" => "No se pudo preparar la consulta para registrar el detalle de pago."
-                ];
+                // 5. Insertar el nuevo detalle de pago
+                $sql = "INSERT INTO detalle_pago (venta_codigo, pago_id, pago_numero, metodo_pago, numero_operacion) 
+                        VALUES (:venta_codigo, :pago_id, :pago_numero, :metodo_pago, :numero_operacion)";
+                $stmt = mainModel::conectar()->prepare($sql);
+                $stmt->bindParam(":venta_codigo", $codigo_venta);
+                $stmt->bindParam(":pago_id", $pago_id); // Usar el ID del pago existente
+                $stmt->bindParam(":pago_numero", $nuevo_pago_numero);
+                $stmt->bindParam(":metodo_pago", $metodo_pago);
+                $stmt->bindParam(":numero_operacion", $numero_operacion);
+                $stmt->execute();
+        
+                // Confirmar la transacción
+                mainModel::conectar()->commit();
+        
+                $alerta = ["success" => true, "message" => "Detalle de pago registrado exitosamente."];
+            } catch (PDOException $e) {
+                // Revertir la transacción en caso de error
+                mainModel::conectar()->rollBack();
+        
+                error_log("Error en la transacción: " . $e->getMessage());
+                $alerta = ["success" => false, "message" => "No se pudo registrar el detalle de pago."];
             }
         
-            echo json_encode($alerta); // Enviar la respuesta JSON
+            echo json_encode($alerta);
         }
+        
+        
 
 /*---- o no ----*/
 
